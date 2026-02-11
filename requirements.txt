@@ -1,0 +1,7 @@
+speechrecognition
+pyttsx3==2.71
+pypiwin32
+openai
+pywhatkit
+pyautogui
+requests
