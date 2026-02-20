@@ -3,54 +3,73 @@ import os
 import sys
 from deepface import DeepFace
 
-# Path where your registered face image will be saved
-REGISTERED_FACE_PATH = "registered_face.jpg"
-MODEL_NAME = "ArcFace"  # Pretrained model from DeepFace
+# Folder and file name
+FACE_FOLDER = "faces"
+FACE_FILE = "authorized.jpg"
+REGISTERED_FACE_PATH = os.path.join(FACE_FOLDER, FACE_FILE)
+
+MODEL_NAME = "ArcFace"
 
 
 def register_face():
-    """
-    Run this once to register your face.
-    Captures your face from webcam and saves it as the authorized user.
-    """
     print("[JARVIS] Starting face registration...")
+
+    # Create folder if not exists
+    if not os.path.exists(FACE_FOLDER):
+        os.makedirs(FACE_FOLDER)
+
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
-        print("[ERROR] Could not open webcam.")
+        print("[ERROR] Cannot access webcam.")
         return False
 
-    print("[JARVIS] Look at the camera. Press SPACE to capture your face, or Q to quit.")
+    print("[JARVIS] Look at the camera.")
+    print("[JARVIS] Press SPACE to capture your face.")
+    print("[JARVIS] Press Q to quit.")
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("[ERROR] Failed to read from webcam.")
+            print("[ERROR] Failed to capture frame.")
             break
 
-        # Draw a guide rectangle in the center
+        # Draw guide rectangle
         h, w = frame.shape[:2]
         cx, cy = w // 2, h // 2
-        cv2.rectangle(frame, (cx - 100, cy - 120), (cx + 100, cy + 120), (0, 255, 0), 2)
-        cv2.putText(frame, "Align face in box. Press SPACE to capture.", 
-                    (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.rectangle(frame, (cx - 100, cy - 120),
+                      (cx + 100, cy + 120), (0, 255, 0), 2)
+
+        cv2.putText(frame,
+                    "Align face in box & press SPACE",
+                    (20, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2)
 
         cv2.imshow("Jarvis - Face Registration", frame)
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(1) & 0xFF
 
-        if key == ord(' '):  # SPACE to capture
-            # Validate that a face exists in the frame before saving
+        if key == ord(' '):
             try:
-                DeepFace.extract_faces(img_path=frame, detector_backend='opencv')
+                # Check if face is detected
+                DeepFace.extract_faces(
+                    img_path=frame,
+                    detector_backend="opencv"
+                )
+
                 cv2.imwrite(REGISTERED_FACE_PATH, frame)
-                print(f"[JARVIS] Face registered successfully! Saved to '{REGISTERED_FACE_PATH}'")
+                print(f"[JARVIS] Face saved at: {REGISTERED_FACE_PATH}")
+
                 cap.release()
                 cv2.destroyAllWindows()
                 return True
-            except Exception:
-                print("[WARNING] No face detected in frame. Please try again.")
 
-        elif key == ord('q'):  # Q to quit
+            except Exception:
+                print("[WARNING] No face detected. Try again.")
+
+        elif key == ord('q'):
             print("[JARVIS] Registration cancelled.")
             break
 
@@ -60,42 +79,28 @@ def register_face():
 
 
 def verify_face():
-    """
-    Called every time Jarvis starts.
-    Captures a live frame and compares it against the registered face.
-    Returns True if identity is verified, False otherwise.
-    """
-    # Check if a face has been registered
     if not os.path.exists(REGISTERED_FACE_PATH):
-        print("[JARVIS] No registered face found. Please run registration first.")
-        print("         Run: python face_auth.py --register")
+        print("[JARVIS] No registered face found.")
+        print("Run: python face_auth.py --register")
         return False
 
-    print("[JARVIS] Starting face verification...")
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
-        print("[ERROR] Could not open webcam.")
+        print("[ERROR] Cannot access webcam.")
         return False
 
-    MAX_ATTEMPTS = 30  # ~5 seconds at 6fps before giving up
-    attempt = 0
-    verified = False
+    print("[JARVIS] Verifying identity...")
 
-    print("[JARVIS] Look at the camera for verification...")
+    MAX_ATTEMPTS = 30
+    attempts = 0
 
-    while attempt < MAX_ATTEMPTS:
+    while attempts < MAX_ATTEMPTS:
         ret, frame = cap.read()
         if not ret:
             break
 
-        # Draw UI
-        h, w = frame.shape[:2]
-        cx, cy = w // 2, h // 2
-        cv2.rectangle(frame, (cx - 100, cy - 120), (cx + 100, cy + 120), (255, 255, 0), 2)
-        cv2.putText(frame, "Verifying identity...", 
-                    (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-        cv2.imshow("Jarvis - Identity Verification", frame)
+        cv2.imshow("Jarvis - Face Verification", frame)
         cv2.waitKey(1)
 
         try:
@@ -103,41 +108,35 @@ def verify_face():
                 img1_path=frame,
                 img2_path=REGISTERED_FACE_PATH,
                 model_name=MODEL_NAME,
-                enforce_detection=True,
-                detector_backend='opencv'
+                detector_backend="opencv",
+                enforce_detection=True
             )
 
             if result["verified"]:
-                verified = True
-                distance = result["distance"]
-                print(f"[JARVIS] Identity verified! (Confidence distance: {distance:.4f})")
-                break
+                print("[JARVIS] Identity verified.")
+                cap.release()
+                cv2.destroyAllWindows()
+                return True
             else:
-                print(f"[JARVIS] Face not matched. (Distance: {result['distance']:.4f})")
-                break  # Stop on first confident non-match
+                print("[JARVIS] Face not matched.")
+                break
 
         except Exception:
-            # No face detected in this frame, try next frame
-            attempt += 1
+            attempts += 1
             continue
 
     cap.release()
     cv2.destroyAllWindows()
-    return verified
+    return False
 
 
-# ──────────────────────────────────────────────
-# Run directly for registration:
-#   python face_auth.py --register
-# ──────────────────────────────────────────────
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--register":
         success = register_face()
         if success:
-            print("[DONE] You can now start Jarvis. It will recognize your face on startup.")
+            print("[DONE] Registration complete.")
         else:
-            print("[FAILED] Registration failed. Please try again.")
+            print("[FAILED] Registration failed.")
     else:
         print("Usage:")
-        print("  python face_auth.py --register   → Register your face (run once)")
-        print("  Import verify_face() in main.py  → For authentication on startup")
+        print("python face_auth.py --register")
