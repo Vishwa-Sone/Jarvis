@@ -1,24 +1,27 @@
 import os
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 
+load_dotenv(override=True)
 
-load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
 
-# Fetch the key from the environment
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+if not api_key:
+    print("CRITICAL ERROR: Gemini API key not found! Check your .env file.")
+else:
+    genai.configure(api_key=api_key)
+    
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 def aiProcess(command):
-    """Sends command to OpenAI and returns the text response."""
+    """Sends command to Gemini and returns the text response."""
     try:
-        completion = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are Jarvis, a helpful virtual assistant. Keep answers short and concise."},
-                {"role": "user", "content": command}
-            ]
-        )
-        return completion.choices[0].message.content
+        if not api_key:
+            return "Sir, my API key is missing. Please check the dot env file."
+            
+        prompt = f"You are Jarvis, a helpful virtual assistant. Keep your response very short and concise. User says: {command}"
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
-        print(f"OpenAI Error: {e}")
-        return "I am having trouble connecting to my AI brain."
+        print(f"Gemini Error: {e}")
+        return "Sir, I am having trouble reaching my Gemini servers."

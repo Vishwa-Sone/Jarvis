@@ -1,7 +1,16 @@
 speechrecognition
 pyttsx3==2.71
 pypiwin32
-openai
 pywhatkit
 pyautogui
 requests
+google-generativeai
+python-dotenv
+deepface
+opencv-python
+tf-keras
+
+
+
+
+

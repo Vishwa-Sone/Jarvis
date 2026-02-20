@@ -2,19 +2,19 @@ import speech_recognition as sr
 import webbrowser
 import pyttsx3
 import requests
-import time
+import time 
 import os
 import datetime
 import pyautogui
 import pywhatkit
 import client  
+import face_auth                        # ← NEW: Face authentication module
 from dotenv import load_dotenv
 
 load_dotenv()
 
 recognizer = sr.Recognizer()
 engine = pyttsx3.init()
-
 
 newsapi = os.getenv("NEWS_API_KEY")
 
@@ -23,10 +23,12 @@ engine.setProperty('voice', voices[0].id)
 engine.setProperty('rate', 160)
 engine.setProperty('volume', 1.0)
 
+
 def speak(text):
     print(f"Jarvis: {text}")
     engine.say(text)
     engine.runAndWait()
+
 
 def processCommand(c):
     c = c.lower()
@@ -72,15 +74,28 @@ def processCommand(c):
         pyautogui.screenshot("jarvis_screenshot.png")
         speak("Screenshot saved")
     else:
-        # Passes command to client.py which handles OpenAI
         reply = client.aiProcess(c)
         speak(reply)
 
+
 if __name__ == "__main__":
     speak("Initializing Jarvis...")
+
+    # ─────────────────────────────────────────────
+    # FACE AUTHENTICATION — runs before anything else
+    # ─────────────────────────────────────────────
+    speak("Please look at the camera for identity verification.")
     
+    if face_auth.verify_face():
+        speak("Identity verified. Welcome back, Vishwa.")
+    else:
+        speak("Access denied. I don't recognize you. Shutting down.")
+        print("[JARVIS] Unauthorized access attempt. Exiting.")
+        exit()
+    # ─────────────────────────────────────────────
+
     recognizer.dynamic_energy_threshold = False
-    recognizer.energy_threshold = 500
+    recognizer.energy_threshold = 300
 
     while True:
         print("Listening for wake word...")
