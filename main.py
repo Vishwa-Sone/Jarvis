@@ -1,27 +1,41 @@
+
+
 import speech_recognition as sr
-import webbrowser
 import pyttsx3
-import requests
-import time 
-import os
-import datetime
-import pyautogui
-import pywhatkit
-import client  
-import face_auth                        # ← NEW: Face authentication module
+import client
+import face_auth
+import profile as user_profile
+from logger import logger
 from dotenv import load_dotenv
+
+# ── Import all skills ────────────────────────────────────────
+from skills import web_skill
+from skills import music_skill
+from skills import news_skill
+from skills import system_skill
+from skills import memory_skill
+# ─────────────────────────────────────────────────────────────
 
 load_dotenv()
 
 recognizer = sr.Recognizer()
-engine = pyttsx3.init()
-
-newsapi = os.getenv("NEWS_API_KEY")
+engine     = pyttsx3.init()
 
 voices = engine.getProperty('voices')
 engine.setProperty('voice', voices[0].id)
 engine.setProperty('rate', 160)
 engine.setProperty('volume', 1.0)
+
+
+
+SKILLS = [
+    web_skill,
+    music_skill,
+    news_skill,
+    system_skill,
+    memory_skill,
+]
+
 
 
 def speak(text):
@@ -30,88 +44,77 @@ def speak(text):
     engine.runAndWait()
 
 
-def processCommand(c):
-    c = c.lower()
+def processCommand(command):
+    """
+    Routes command to the correct skill.
+    If no skill matches → falls back to Gemini AI.
 
-    if "open google" in c:
-        webbrowser.open("https://google.com")
-        speak("Opening Google")
-    elif "open youtube" in c:
-        webbrowser.open("https://youtube.com")
-        speak("Opening YouTube")
-    elif "open linkedin" in c:
-        webbrowser.open("https://linkedin.com")
-        speak("Opening LinkedIn")
-    elif c.startswith("play"):
-        song = c[5:].strip()
-        speak(f"Playing {song} on YouTube")
-        pywhatkit.playonyt(song)
-    elif "news" in c:
-        try:
-            r = requests.get(f"https://newsapi.org/v2/top-headlines?country=in&apiKey={newsapi}")
-            if r.status_code == 200:
-                data = r.json()
-                articles = data.get('articles', [])
-                speak("Here are the top headlines")
-                for article in articles[:3]:
-                    title = article.get('title', 'No title')
-                    speak(title)
-            else:
-                speak("I encountered an issue fetching the news")
-        except Exception:
-            speak("I am unable to connect to the news service")
-    elif "open calculator" in c:
-        speak("Opening Calculator")
-        os.startfile("calc.exe")
-    elif "open notepad" in c:
-        speak("Opening Notepad")
-        os.startfile("notepad.exe")
-    elif "time" in c:
-        strTime = datetime.datetime.now().strftime("%H:%M")
-        speak(f"Sir, the time is {strTime}")
-    elif "screenshot" in c:
-        speak("Taking screenshot")
-        pyautogui.screenshot("jarvis_screenshot.png")
-        speak("Screenshot saved")
-    else:
-        reply = client.aiProcess(c)
-        speak(reply)
+    This replaces the entire if/elif chain.
+    Clean, scalable, and professional.
+    """
+    c       = command.lower()
+    profile = user_profile.profile
+
+    logger.info(f"Processing command: {c}")
+
+    # ── Loop through all skills ──────────────────
+    for skill in SKILLS:
+        # Check if any of the skill's keywords match
+        for keyword in skill.KEYWORDS:
+            if keyword in c:
+                # Found a match — execute the skill
+                handled = skill.execute(c, speak, profile)
+                if handled:
+                    return   # skill handled it — done!
+
+    # ── No skill matched → send to Gemini AI ────
+    logger.info("No skill matched — sending to Gemini.")
+    reply = client.aiProcess(c)
+    speak(reply)
 
 
 if __name__ == "__main__":
+    logger.info("=" * 50)
+    logger.info("Jarvis is starting up...")
+    logger.info("=" * 50)
+
     speak("Initializing Jarvis...")
 
-    # ─────────────────────────────────────────────
-    # FACE AUTHENTICATION — runs before anything else
-    # ─────────────────────────────────────────────
+    # ── Face Authentication ──────────────────────
     speak("Please look at the camera for identity verification.")
-    
+
     if face_auth.verify_face():
-        speak("Identity verified. Welcome back, Vishwa.")
+        logger.info("Face authentication: SUCCESS")
+        greeting = user_profile.profile.get("greeting", "Welcome back Sir")
+        name     = user_profile.profile.get("name", "Sir")
+        speak(f"{greeting}, {name}. All systems are online.")
     else:
-        speak("Access denied. I don't recognize you. Shutting down.")
-        print("[JARVIS] Unauthorized access attempt. Exiting.")
+        logger.warning("Face authentication: FAILED")
+        speak("Access denied. Shutting down.")
         exit()
-    # ─────────────────────────────────────────────
 
     recognizer.dynamic_energy_threshold = False
-    recognizer.energy_threshold = 300
+    recognizer.energy_threshold         = 400
+
+    logger.info("Jarvis is ready and listening.")
 
     while True:
         print("Listening for wake word...")
         try:
             with sr.Microphone() as source:
                 recognizer.pause_threshold = 0.8
-                audio = recognizer.listen(source, timeout=None, phrase_time_limit=5)
+                audio = recognizer.listen(
+                    source, timeout=None, phrase_time_limit=5)
 
             word = recognizer.recognize_google(audio)
 
             if "jarvis" in word.lower():
                 speak("Yes sir")
-                
+
                 with sr.Microphone() as source:
                     print("Listening for command...")
-                    audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+                    audio = recognizer.listen(
+                        source, timeout=5, phrase_time_limit=5)
 
                 command = recognizer.recognize_google(audio)
                 print(f"Command: {command}")
@@ -120,4 +123,4 @@ if __name__ == "__main__":
         except sr.UnknownValueError:
             pass
         except Exception as e:
-            print(f"Error: {e}")
+            logger.error(f"Main loop error: {e}")
